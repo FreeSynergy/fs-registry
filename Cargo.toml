@@ -1,0 +1,24 @@
+[package]
+name        = "fs-registry"
+description = "Service registry for FreeSynergy — what capabilities are available on this node"
+version     = "0.1.0"
+edition     = "2021"
+license     = "MIT"
+authors     = ["FreeSynergy.Net"]
+repository  = "https://github.com/FreeSynergy/fs-registry"
+
+[dependencies]
+serde       = { version = "1", features = ["derive"] }
+serde_json  = { version = "1" }
+thiserror   = { version = "2" }
+tracing     = { version = "0.1" }
+chrono      = { version = "0.4", features = ["serde"] }
+
+sea-orm = { version = "=2.0.0-rc.37", default-features = false, features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
