@@ -80,12 +80,16 @@ pub struct Registry {
 
 impl Registry {
     /// Open (or create) the registry database. Use `":memory:"` in tests.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegistryError`] if the database connection fails or the schema cannot be applied.
     #[instrument(name = "registry.open")]
     pub async fn open(path: &str) -> Result<Self, RegistryError> {
         let url = if path == ":memory:" {
             "sqlite::memory:".to_string()
         } else {
-            format!("sqlite://{}?mode=rwc", path)
+            format!("sqlite://{path}?mode=rwc")
         };
         let db = Database::connect(&url).await?;
         db.execute_unprepared(SCHEMA).await?;
@@ -95,6 +99,10 @@ impl Registry {
     // ── Registration ──────────────────────────────────────────────────────────
 
     /// Register a service capability. If the entry already exists, it is updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegistryError`] on database failure.
     #[instrument(name = "registry.register", skip(self, entry))]
     pub async fn register(&self, entry: ServiceEntry) -> Result<(), RegistryError> {
         let existing = entity::Entity::find_by_id(&entry.id).one(&self.db).await?;
@@ -127,6 +135,10 @@ impl Registry {
     }
 
     /// Deregister all capabilities of a service (called on shutdown).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegistryError`] on database failure.
     #[instrument(name = "registry.deregister")]
     pub async fn deregister(&self, service_id: &str) -> Result<(), RegistryError> {
         let entries = entity::Entity::find()
@@ -144,6 +156,10 @@ impl Registry {
     // ── Queries ───────────────────────────────────────────────────────────────
 
     /// All services registered for a specific capability.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegistryError`] on database or deserialization failure.
     pub async fn by_capability(
         &self,
         capability: &str,
@@ -158,6 +174,10 @@ impl Registry {
     }
 
     /// All capabilities registered by a specific service.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegistryError`] on database or deserialization failure.
     pub async fn by_service(&self, service_id: &str) -> Result<Vec<ServiceEntry>, RegistryError> {
         entity::Entity::find()
             .filter(entity::Column::ServiceId.eq(service_id))
@@ -169,6 +189,10 @@ impl Registry {
     }
 
     /// All registered entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegistryError`] on database or deserialization failure.
     pub async fn all(&self) -> Result<Vec<ServiceEntry>, RegistryError> {
         entity::Entity::find()
             .all(&self.db)
@@ -179,6 +203,10 @@ impl Registry {
     }
 
     /// Update the status of a specific entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegistryError::NotFound`] if the id does not exist, or a database error.
     pub async fn set_status(&self, id: &str, status: ServiceStatus) -> Result<(), RegistryError> {
         let model = entity::Entity::find_by_id(id)
             .one(&self.db)

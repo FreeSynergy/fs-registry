@@ -67,6 +67,7 @@ impl ServiceEntry {
         }
     }
 
+    #[must_use]
     pub fn is_up(&self) -> bool {
         self.status == ServiceStatus::Up
     }

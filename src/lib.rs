@@ -1,4 +1,4 @@
-//! `fs-registry` — service capability registry for FreeSynergy.
+//! `fs-registry` — service capability registry for `FreeSynergy`.
 //!
 //! The Registry answers the question *"What capabilities are available on this node right now?"*.
 //!
