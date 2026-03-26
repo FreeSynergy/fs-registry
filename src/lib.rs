@@ -27,7 +27,7 @@
 //! # }
 //! ```
 
-#![warn(clippy::all, clippy::pedantic)]
+#![deny(clippy::all, clippy::pedantic, warnings)]
 #![allow(clippy::module_name_repetitions)]
 
 pub mod error;
