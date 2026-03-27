@@ -30,10 +30,12 @@
 #![deny(clippy::all, clippy::pedantic, warnings)]
 #![allow(clippy::module_name_repetitions)]
 
+pub mod bus_handler;
 pub mod error;
 pub mod models;
 pub mod registry;
 
+pub use bus_handler::{RegistryBusHandler, ServiceStartedPayload, ServiceStoppedPayload};
 pub use error::RegistryError;
 pub use models::{ServiceEntry, ServiceStatus};
 pub use registry::Registry;
