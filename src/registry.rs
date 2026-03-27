@@ -202,6 +202,24 @@ impl Registry {
             .collect()
     }
 
+    /// Find the endpoint of the first `Up` service for a capability.
+    ///
+    /// Returns `None` if no service is registered or all are down.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegistryError`] on database failure.
+    pub async fn endpoint_for_capability(
+        &self,
+        capability: &str,
+    ) -> Result<Option<String>, RegistryError> {
+        let entries = self.by_capability(capability).await?;
+        Ok(entries
+            .into_iter()
+            .find(|e| e.status == ServiceStatus::Up)
+            .map(|e| e.endpoint))
+    }
+
     /// Update the status of a specific entry.
     ///
     /// # Errors

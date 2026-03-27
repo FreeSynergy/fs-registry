@@ -15,10 +15,7 @@ use fs_bus::{BusError, Event, TopicHandler};
 use serde::{Deserialize, Serialize};
 use tracing::{instrument, warn};
 
-use crate::{
-    models::ServiceEntry,
-    registry::Registry,
-};
+use crate::{models::ServiceEntry, registry::Registry};
 
 // ── Payload types ─────────────────────────────────────────────────────────────
 
@@ -72,11 +69,8 @@ impl TopicHandler for RegistryBusHandler {
                         return Ok(());
                     }
                 };
-                let entry = ServiceEntry::new(
-                    &payload.service_id,
-                    &payload.capability,
-                    &payload.endpoint,
-                );
+                let entry =
+                    ServiceEntry::new(&payload.service_id, &payload.capability, &payload.endpoint);
                 if let Err(e) = self.registry.register(entry).await {
                     warn!("registry register failed: {e}");
                 }
