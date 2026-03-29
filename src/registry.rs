@@ -1,8 +1,12 @@
 //! `Registry` — the primary interface to `fs-registry.db`.
+//!
+//! `Registry` also implements [`crate::ServiceRegistry`] so callers can work
+//! against the trait without depending on the concrete type.
 
 use crate::{
     error::RegistryError,
     models::{ServiceEntry, ServiceStatus},
+    service_registry::ServiceRegistry,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, Database, DatabaseConnection,
@@ -234,5 +238,41 @@ impl Registry {
         active.status = Set(status.to_string().to_lowercase());
         active.update(&self.db).await?;
         Ok(())
+    }
+}
+
+// ── ServiceRegistry impl ──────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl ServiceRegistry for Registry {
+    async fn register(&self, entry: ServiceEntry) -> Result<(), RegistryError> {
+        self.register(entry).await
+    }
+
+    async fn deregister(&self, service_id: &str) -> Result<(), RegistryError> {
+        self.deregister(service_id).await
+    }
+
+    async fn list(&self) -> Result<Vec<ServiceEntry>, RegistryError> {
+        self.all().await
+    }
+
+    async fn by_capability(&self, capability: &str) -> Result<Vec<ServiceEntry>, RegistryError> {
+        self.by_capability(capability).await
+    }
+
+    async fn by_service(&self, service_id: &str) -> Result<Vec<ServiceEntry>, RegistryError> {
+        self.by_service(service_id).await
+    }
+
+    async fn endpoint_for_capability(
+        &self,
+        capability: &str,
+    ) -> Result<Option<String>, RegistryError> {
+        self.endpoint_for_capability(capability).await
+    }
+
+    async fn set_status(&self, id: &str, status: ServiceStatus) -> Result<(), RegistryError> {
+        self.set_status(id, status).await
     }
 }

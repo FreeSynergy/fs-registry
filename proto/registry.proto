@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package registry;
+
+// Service capability registry — answers "what capabilities are available?"
+//
+// Services register their capabilities on startup and deregister on shutdown.
+// Callers query the registry to find an endpoint without hard-coding addresses.
+service RegistryService {
+    // Register or update a service capability entry.
+    rpc Register(RegisterRequest) returns (RegisterResponse);
+
+    // Deregister all capabilities of a service (called on shutdown).
+    rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+
+    // List all registered entries.
+    rpc List(ListRequest) returns (ListResponse);
+
+    // All entries for a specific capability.
+    rpc Lookup(LookupRequest) returns (LookupResponse);
+
+    // Find the endpoint of the first Up service for a capability.
+    rpc EndpointFor(EndpointForRequest) returns (EndpointForResponse);
+
+    // Update the reachability status of a specific entry.
+    rpc SetStatus(SetStatusRequest) returns (SetStatusResponse);
+
+    // Health probe.
+    rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// ── Register ─────────────────────────────────────────────────────────────────
+
+message RegisterRequest {
+    string service_id  = 1; // e.g. "kanidm"
+    string capability  = 2; // e.g. "iam"
+    string endpoint    = 3; // e.g. "http://kanidm:8443"
+}
+
+message RegisterResponse {
+    bool   ok      = 1;
+    string message = 2;
+}
+
+// ── Deregister ────────────────────────────────────────────────────────────────
+
+message DeregisterRequest {
+    string service_id = 1;
+}
+
+message DeregisterResponse {
+    bool   ok      = 1;
+    string message = 2;
+}
+
+// ── List ──────────────────────────────────────────────────────────────────────
+
+message ListRequest {}
+
+message ListResponse {
+    repeated ServiceEntryProto entries = 1;
+}
+
+// ── Lookup ────────────────────────────────────────────────────────────────────
+
+message LookupRequest {
+    string capability = 1;
+}
+
+message LookupResponse {
+    repeated ServiceEntryProto entries = 1;
+}
+
+// ── EndpointFor ───────────────────────────────────────────────────────────────
+
+message EndpointForRequest {
+    string capability = 1;
+}
+
+message EndpointForResponse {
+    bool   found    = 1;
+    string endpoint = 2; // empty when found = false
+}
+
+// ── SetStatus ─────────────────────────────────────────────────────────────────
+
+message SetStatusRequest {
+    string id     = 1; // entry id, e.g. "kanidm::iam"
+    string status = 2; // "up" | "down" | "unknown"
+}
+
+message SetStatusResponse {
+    bool   ok      = 1;
+    string message = 2;
+}
+
+// ── Health ────────────────────────────────────────────────────────────────────
+
+message HealthRequest {}
+
+message HealthResponse {
+    bool   ok            = 1;
+    uint32 entry_count   = 2;
+    string message       = 3;
+}
+
+// ── Shared ────────────────────────────────────────────────────────────────────
+
+message ServiceEntryProto {
+    string id            = 1;
+    string service_id    = 2;
+    string capability    = 3;
+    string endpoint      = 4;
+    string status        = 5; // "up" | "down" | "unknown"
+    string registered_at = 6; // RFC 3339
+}

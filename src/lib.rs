@@ -7,13 +7,27 @@
 //! Callers query by capability to find the endpoint that can handle a request.
 //!
 //! This replaces the old Bridge concept: instead of a dynamic bridge executor,
-//! services implement a standard trait and register themselves here. The Bus
+//! services implement a standard trait and register themselves here.  The Bus
 //! routes to whoever is registered for the required capability.
+//!
+//! # Architecture
+//!
+//! ```text
+//! ServiceRegistry (trait)
+//!     ^
+//! Registry           <— SQLite-backed implementation
+//!     ^
+//! GrpcRegistry       <— tonic gRPC service  (RegistryService proto)
+//! REST router        <— axum routes          (POST /services, GET /capabilities/…)
+//! CLI                <— clap commands        (list / lookup / status)
+//! RegistryBusHandler <— fs-bus subscriber    (service.started / service.stopped)
+//! ```
 //!
 //! # Example
 //!
 //! ```no_run
 //! use fs_registry::{Registry, RegistryError, ServiceEntry, ServiceStatus};
+//! use fs_registry::service_registry::ServiceRegistry;
 //!
 //! # async fn example() -> Result<(), RegistryError> {
 //! let registry = Registry::open(":memory:").await?;
@@ -31,11 +45,17 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod bus_handler;
+pub mod cli;
 pub mod error;
+pub mod grpc;
+pub mod keys;
 pub mod models;
 pub mod registry;
+pub mod rest;
+pub mod service_registry;
 
 pub use bus_handler::{RegistryBusHandler, ServiceStartedPayload, ServiceStoppedPayload};
 pub use error::RegistryError;
 pub use models::{ServiceEntry, ServiceStatus};
 pub use registry::Registry;
+pub use service_registry::ServiceRegistry;

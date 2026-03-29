@@ -1,0 +1,17 @@
+[package]
+id          = "freesynergy/fs-registry"
+name        = "fs-registry"
+version     = "0.1.0"
+type        = "program"
+description = "Service capability registry for FreeSynergy — what capabilities are available on this node?"
+license     = "MIT"
+authors     = ["FreeSynergy.Net"]
+repository  = "https://github.com/FreeSynergy/fs-registry"
+
+[runtime]
+binary      = "fs-registry"
+container   = true
+
+[ports]
+grpc = 50060
+rest = 8060
