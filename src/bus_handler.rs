@@ -1,9 +1,11 @@
-// bus_handler.rs — RegistryBusHandler: bridges fs-bus service::* events to
+// bus_handler.rs — RegistryBusHandler: bridges fs-bus registry::service::* events to
 // the Registry database.
 //
 // Topic patterns handled:
-//   service.started  → registry.register(entry)
-//   service.stopped  → registry.deregister(service_id)
+//   registry::service::registered  → registry.register(entry)
+//   registry::service::stopped     → registry.deregister(service_id)
+//   registry::capability::added    → (logged, no extra action needed)
+//   registry::capability::removed  → (logged, no extra action needed)
 //
 // Unknown topics and malformed payloads are logged and not propagated so a
 // single bad message cannot disrupt the rest of the bus.
@@ -11,9 +13,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use fs_bus::topics::{
+    REGISTRY_CAPABILITY_ADDED, REGISTRY_CAPABILITY_REMOVED, REGISTRY_SERVICE_REGISTERED,
+    REGISTRY_SERVICE_STOPPED,
+};
 use fs_bus::{BusError, Event, TopicHandler};
 use serde::{Deserialize, Serialize};
-use tracing::{instrument, warn};
+use tracing::{info, instrument, warn};
 
 use crate::{models::ServiceEntry, registry::Registry};
 
@@ -53,19 +59,18 @@ impl RegistryBusHandler {
 
 #[async_trait]
 impl TopicHandler for RegistryBusHandler {
-    #[allow(clippy::unnecessary_literal_bound)]
-    fn topic_pattern(&self) -> &str {
-        "service.#"
+    fn topic_pattern(&self) -> &'static str {
+        "registry::*"
     }
 
     #[instrument(name = "registry.bus_handler", skip(self, event), fields(topic = event.topic()))]
     async fn handle(&self, event: &Event) -> Result<(), BusError> {
         match event.topic() {
-            "service.started" => {
+            REGISTRY_SERVICE_REGISTERED => {
                 let payload: ServiceStartedPayload = match event.parse_payload() {
                     Ok(p) => p,
                     Err(e) => {
-                        warn!("service.started: bad payload: {e}");
+                        warn!("registry::service::registered: bad payload: {e}");
                         return Ok(());
                     }
                 };
@@ -75,17 +80,20 @@ impl TopicHandler for RegistryBusHandler {
                     warn!("registry register failed: {e}");
                 }
             }
-            "service.stopped" => {
+            REGISTRY_SERVICE_STOPPED => {
                 let payload: ServiceStoppedPayload = match event.parse_payload() {
                     Ok(p) => p,
                     Err(e) => {
-                        warn!("service.stopped: bad payload: {e}");
+                        warn!("registry::service::stopped: bad payload: {e}");
                         return Ok(());
                     }
                 };
                 if let Err(e) = self.registry.deregister(&payload.service_id).await {
                     warn!("registry deregister failed: {e}");
                 }
+            }
+            REGISTRY_CAPABILITY_ADDED | REGISTRY_CAPABILITY_REMOVED => {
+                info!("registry capability event: {}", event.topic());
             }
             other => {
                 warn!("RegistryBusHandler: unhandled topic '{other}'");

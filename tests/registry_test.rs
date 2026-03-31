@@ -1,6 +1,13 @@
 //! Integration tests for fs-registry.
 
-use fs_registry::{Registry, RegistryError, ServiceEntry, ServiceStatus};
+use std::sync::Arc;
+
+use fs_bus::topics::{REGISTRY_SERVICE_REGISTERED, REGISTRY_SERVICE_STOPPED};
+use fs_bus::{Event, TopicHandler};
+use fs_registry::{
+    Registry, RegistryBusHandler, RegistryError, ServiceEntry, ServiceStartedPayload,
+    ServiceStatus, ServiceStoppedPayload,
+};
 
 // ── F5: endpoint_for_capability ───────────────────────────────────────────────
 
@@ -57,6 +64,62 @@ async fn endpoint_for_capability_prefers_up_over_down() {
 
 async fn registry() -> Registry {
     Registry::open(":memory:").await.expect("open failed")
+}
+
+// ── Bus handler tests ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn bus_handler_registers_on_service_started_event() {
+    let reg = Arc::new(registry().await);
+    let handler = RegistryBusHandler::new(Arc::clone(&reg));
+
+    let payload = ServiceStartedPayload {
+        service_id: "stalwart".into(),
+        capability: "mail".into(),
+        endpoint: "http://stalwart:25".into(),
+    };
+    let event = Event::new(REGISTRY_SERVICE_REGISTERED, "test", payload).unwrap();
+    handler.handle(&event).await.unwrap();
+
+    let results = reg.by_capability("mail").await.unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].service_id, "stalwart");
+}
+
+#[tokio::test]
+async fn bus_handler_deregisters_on_service_stopped_event() {
+    let reg = Arc::new(registry().await);
+    let handler = RegistryBusHandler::new(Arc::clone(&reg));
+
+    // Register first via bus
+    let started = ServiceStartedPayload {
+        service_id: "stalwart".into(),
+        capability: "mail".into(),
+        endpoint: "http://stalwart:25".into(),
+    };
+    handler
+        .handle(&Event::new(REGISTRY_SERVICE_REGISTERED, "test", started).unwrap())
+        .await
+        .unwrap();
+
+    // Now stop via bus
+    let stopped = ServiceStoppedPayload {
+        service_id: "stalwart".into(),
+    };
+    handler
+        .handle(&Event::new(REGISTRY_SERVICE_STOPPED, "test", stopped).unwrap())
+        .await
+        .unwrap();
+
+    let results = reg.by_capability("mail").await.unwrap();
+    assert!(results.is_empty(), "service should be deregistered");
+}
+
+#[tokio::test]
+async fn bus_handler_topic_pattern_is_registry_namespace() {
+    let reg = Arc::new(registry().await);
+    let handler = RegistryBusHandler::new(reg);
+    assert_eq!(handler.topic_pattern(), "registry::*");
 }
 
 #[tokio::test]
