@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
+use fs_bus::message::BusMessage;
 use fs_bus::topics::{REGISTRY_SERVICE_REGISTERED, REGISTRY_SERVICE_STOPPED};
-use fs_bus::{Event, TopicHandler};
+use fs_bus::{Event, MessageBus, TopicHandler};
 use fs_registry::{
     Registry, RegistryBusHandler, RegistryError, ServiceEntry, ServiceStartedPayload,
     ServiceStatus, ServiceStoppedPayload,
@@ -119,7 +120,7 @@ async fn bus_handler_deregisters_on_service_stopped_event() {
 async fn bus_handler_topic_pattern_is_registry_namespace() {
     let reg = Arc::new(registry().await);
     let handler = RegistryBusHandler::new(reg);
-    assert_eq!(handler.topic_pattern(), "registry::*");
+    assert_eq!(handler.topic_pattern(), "registry::#");
 }
 
 #[tokio::test]
@@ -207,4 +208,63 @@ async fn set_status_not_found_returns_error() {
         .set_status("nonexistent::cap", ServiceStatus::Down)
         .await;
     assert!(matches!(result, Err(RegistryError::NotFound { .. })));
+}
+
+// ── MessageBus end-to-end ─────────────────────────────────────────────────────
+
+/// Verify that publishing a `registry::service::registered` event through
+/// a real `MessageBus` (with `RegistryBusHandler` attached) actually persists
+/// the service entry in the registry.
+#[tokio::test]
+async fn message_bus_register_via_publish() {
+    let reg = Arc::new(registry().await);
+    let mut bus = MessageBus::new();
+    bus.add_handler(Arc::new(RegistryBusHandler::new(Arc::clone(&reg))));
+
+    let payload = ServiceStartedPayload {
+        service_id: "forgejo".into(),
+        capability: "git".into(),
+        endpoint: "http://forgejo:3000".into(),
+    };
+    let ev = Event::new(REGISTRY_SERVICE_REGISTERED, "fs-registry-test", payload).unwrap();
+    bus.publish(BusMessage::fire(ev)).await;
+
+    let results = reg.by_capability("git").await.unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].service_id, "forgejo");
+    assert_eq!(results[0].endpoint, "http://forgejo:3000");
+}
+
+/// Verify that a stop event published through the bus removes the entry.
+#[tokio::test]
+async fn message_bus_deregister_via_publish() {
+    let reg = Arc::new(registry().await);
+    let mut bus = MessageBus::new();
+    bus.add_handler(Arc::new(RegistryBusHandler::new(Arc::clone(&reg))));
+
+    // Register via bus.
+    let start = ServiceStartedPayload {
+        service_id: "forgejo".into(),
+        capability: "git".into(),
+        endpoint: "http://forgejo:3000".into(),
+    };
+    bus.publish(BusMessage::fire(
+        Event::new(REGISTRY_SERVICE_REGISTERED, "test", start).unwrap(),
+    ))
+    .await;
+
+    // Deregister via bus.
+    let stop = ServiceStoppedPayload {
+        service_id: "forgejo".into(),
+    };
+    bus.publish(BusMessage::fire(
+        Event::new(REGISTRY_SERVICE_STOPPED, "test", stop).unwrap(),
+    ))
+    .await;
+
+    let results = reg.by_capability("git").await.unwrap();
+    assert!(
+        results.is_empty(),
+        "service must be removed after stop event"
+    );
 }

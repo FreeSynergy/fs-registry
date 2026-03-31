@@ -60,7 +60,7 @@ impl RegistryBusHandler {
 #[async_trait]
 impl TopicHandler for RegistryBusHandler {
     fn topic_pattern(&self) -> &'static str {
-        "registry::*"
+        "registry::#"
     }
 
     #[instrument(name = "registry.bus_handler", skip(self, event), fields(topic = event.topic()))]

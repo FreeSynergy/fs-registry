@@ -2,7 +2,12 @@
 //! `fs-registry` — service capability registry daemon for `FreeSynergy`.
 //!
 //! Starts a gRPC server (tonic) and a REST server (axum) and subscribes to
-//! `service.#` bus events to keep the registry in sync.
+//! `registry::service::*` bus events to keep the registry in sync.
+//!
+//! On startup the daemon publishes `registry::service::registered` on the
+//! local in-process bus so any co-located listeners know the registry is
+//! ready.  In production a `BusBridge` can be added to the bus to forward
+//! events from (and to) remote bus instances.
 //!
 //! # Environment variables
 //!
@@ -11,19 +16,24 @@
 //! | `FS_REGISTRY_DB`      | `/var/lib/freesynergy/registry.db`        |
 //! | `FS_GRPC_PORT`        | `50060`                                   |
 //! | `FS_REST_PORT`        | `8060`                                    |
-//! | `FS_BUS_URL`          | (not connected if missing)                |
 
 use std::{net::SocketAddr, sync::Arc};
 
 use clap::Parser as _;
+use fs_bus::{
+    message::BusMessage,
+    topics::{REGISTRY_SERVICE_REGISTERED, REGISTRY_SERVICE_STOPPED},
+    Event, MessageBus,
+};
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
 use fs_registry::{
+    bus_handler::RegistryBusHandler,
     cli::Cli,
     grpc::{GrpcRegistry, RegistryServiceServer},
     registry::Registry,
-    rest,
+    rest, ServiceStartedPayload, ServiceStoppedPayload,
 };
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -86,9 +96,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "starting fs-registry daemon",
     );
 
-    // Open registry.
-    let registry = Registry::open(&cfg.db_path).await?;
-    let registry: Arc<dyn fs_registry::service_registry::ServiceRegistry> = Arc::new(registry);
+    // Open registry — keep Arc<Registry> for the bus handler, then coerce to
+    // the trait object used by gRPC and REST.
+    let registry_arc = Arc::new(Registry::open(&cfg.db_path).await?);
+    let registry: Arc<dyn fs_registry::service_registry::ServiceRegistry> =
+        Arc::clone(&registry_arc) as Arc<dyn fs_registry::service_registry::ServiceRegistry>;
+
+    // ── In-process bus ────────────────────────────────────────────────────────
+    // Build the local bus and attach the RegistryBusHandler so that
+    // registry::service::* events published on this bus are persisted.
+    let mut bus = MessageBus::new();
+    bus.add_handler(Arc::new(RegistryBusHandler::new(Arc::clone(&registry_arc))));
+    let bus = Arc::new(bus);
+
+    // Publish own startup event so co-located listeners know the registry is up.
+    let grpc_endpoint = format!("http://{}", cfg.grpc_addr);
+    let startup_ev = Event::new(
+        REGISTRY_SERVICE_REGISTERED,
+        "fs-registry",
+        ServiceStartedPayload {
+            service_id: "fs-registry".into(),
+            capability: "registry".into(),
+            endpoint: grpc_endpoint,
+        },
+    )?;
+    bus.publish(BusMessage::fire(startup_ev)).await;
+    info!("published registry::service::registered on local bus");
 
     // gRPC server.
     let grpc_registry = GrpcRegistry::new(Arc::clone(&registry));
@@ -118,6 +151,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+
+    // Announce shutdown on the local bus.
+    let stop_ev = Event::new(
+        REGISTRY_SERVICE_STOPPED,
+        "fs-registry",
+        ServiceStoppedPayload {
+            service_id: "fs-registry".into(),
+        },
+    )?;
+    bus.publish(BusMessage::fire(stop_ev)).await;
+    info!("published registry::service::stopped on local bus");
 
     Ok(())
 }
