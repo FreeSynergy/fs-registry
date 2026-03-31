@@ -1,0 +1,12 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    uses: FreeSynergy/fs-ci/.github/workflows/release-desktop.yml@main
+    with:
+      crate-name: "fs-registry"
+    secrets: inherit
